@@ -8,6 +8,13 @@ jobs:
       - checkout
       - run: sudo pip install flake8
       - run: ./bin/flake8_tests.sh
+  black:
+    docker:
+      - image: circleci/python:3.7.0
+    steps:
+      - checkout
+      - run: sudo pip install black
+      - run: black --check redash tests migrations/versions
   backend-unit-tests:
     environment:
       COMPOSE_FILE: .circleci/docker-compose.circle.yml
@@ -105,6 +112,7 @@ workflows:
   build:
     jobs:
       - python-flake8-tests
+      - black
       - backend-unit-tests
       - frontend-lint
       - frontend-unit-tests:
