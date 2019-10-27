@@ -121,6 +121,7 @@ workflows:
       - frontend-e2e-tests:
           requires:
             - frontend-lint
+            - black
       - build-docker-image:
           requires:
             - backend-unit-tests
