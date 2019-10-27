@@ -12,7 +12,7 @@ def _wait_for_db_connection(db):
     retried = False
     while not retried:
         try:
-            db.engine.execute('SELECT 1;')
+            db.engine.execute("SELECT 1;")
             return
         except DatabaseError:
             time.sleep(30)

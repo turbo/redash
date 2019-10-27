@@ -16,25 +16,33 @@ def log_queries():
         chromelogger.info(q.statement % q.parameters)
         chromelogger.info("Runtime: {:.2f}ms".format(1000 * q.duration))
 
-    chromelogger.info("{} queries executed in {:.2f}ms.".format(queries_count, total_duration*1000))
+    chromelogger.info(
+        "{} queries executed in {:.2f}ms.".format(queries_count, total_duration * 1000)
+    )
 
     chromelogger.group_end("SQL Queries")
 
 
 def chrome_log(response):
     request_duration = (time.time() - g.start_time) * 1000
-    queries_duration = g.get('queries_duration', 0.0)
-    queries_count = g.get('queries_count', 0)
+    queries_duration = g.get("queries_duration", 0.0)
+    queries_count = g.get("queries_count", 0)
 
-    group_name = '{} {} ({}, {:.2f}ms runtime, {} queries in {:.2f}ms)'.format(
-        request.method, request.path, response.status_code, request_duration, queries_count, queries_duration)
+    group_name = "{} {} ({}, {:.2f}ms runtime, {} queries in {:.2f}ms)".format(
+        request.method,
+        request.path,
+        response.status_code,
+        request_duration,
+        queries_count,
+        queries_duration,
+    )
 
     chromelogger.group_collapsed(group_name)
 
-    endpoint = (request.endpoint or 'unknown').replace('.', '_')
-    chromelogger.info('Endpoint: {}'.format(endpoint))
-    chromelogger.info('Content Type: {}'.format(response.content_type))
-    chromelogger.info('Content Length: {}'.format(response.content_length or -1))
+    endpoint = (request.endpoint or "unknown").replace(".", "_")
+    chromelogger.info("Endpoint: {}".format(endpoint))
+    chromelogger.info("Content Type: {}".format(response.content_type))
+    chromelogger.info("Content Length: {}".format(response.content_length or -1))
 
     log_queries()
 

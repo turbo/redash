@@ -9,7 +9,7 @@ from redash.worker import job, get_job_logger
 logger = get_job_logger(__name__)
 
 
-@job('default')
+@job("default")
 def record_event(raw_event):
     event = models.Event.record(raw_event)
     models.db.session.commit()
@@ -19,7 +19,7 @@ def record_event(raw_event):
         try:
             data = {
                 "schema": "iglu:io.redash.webhooks/event/jsonschema/1-0-0",
-                "data": event.to_dict()
+                "data": event.to_dict(),
             }
             response = requests.post(hook, json=data)
             if response.status_code != 200:
@@ -32,30 +32,31 @@ def version_check():
     run_version_check()
 
 
-@job('default')
+@job("default")
 def subscribe(form):
-    logger.info("Subscribing to: [security notifications=%s], [newsletter=%s]", form['security_notifications'], form['newsletter'])
+    logger.info(
+        "Subscribing to: [security notifications=%s], [newsletter=%s]",
+        form["security_notifications"],
+        form["newsletter"],
+    )
     data = {
-        'admin_name': form['name'],
-        'admin_email': form['email'],
-        'org_name': form['org_name'],
-        'security_notifications': form['security_notifications'],
-        'newsletter': form['newsletter']
+        "admin_name": form["name"],
+        "admin_email": form["email"],
+        "org_name": form["org_name"],
+        "security_notifications": form["security_notifications"],
+        "newsletter": form["newsletter"],
     }
-    requests.post('https://beacon.redash.io/subscribe', json=data)
+    requests.post("https://beacon.redash.io/subscribe", json=data)
 
 
-@job('default')
+@job("default")
 def send_mail(to, subject, html, text):
     try:
-        message = Message(recipients=to,
-                          subject=subject,
-                          html=html,
-                          body=text)
+        message = Message(recipients=to, subject=subject, html=html, body=text)
 
         mail.send(message)
     except Exception:
-        logger.exception('Failed sending message: %s', message.subject)
+        logger.exception("Failed sending message: %s", message.subject)
 
 
 def sync_user_details():
