@@ -30,7 +30,8 @@ export function TimeAgo({ date, placeholder, autoUpdate }) {
 
   return (
     <Tooltip title={title}>
-      <span className="time-ago" data-test="TimeAgo">{value}</span>
+      <span className="d-none-percy" data-test="TimeAgo">{value}</span>
+      <span className="d-none-not-percy">an hour ago</span>
     </Tooltip>
   );
 }
