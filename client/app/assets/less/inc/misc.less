@@ -234,4 +234,14 @@
     .hide-in-percy, .pace {
         visibility: hidden;
     }
+
+    // fix TimeAgo with "an hour ago" in Percy
+    .time-ago {
+        visibility: hidden;
+
+        &:before {
+            visibility: visible;
+            content: 'an hour ago';
+        }
+    }
 }
