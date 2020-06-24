@@ -1,12 +1,10 @@
-import { isFunction, extend, omit, sortBy, find } from 'lodash';
+import { isFunction, extend, omit, sortBy, find, filter } from "lodash";
+import { stripBase } from "@/components/ApplicationArea/Router";
+import { currentUser } from "@/services/auth";
 
 class SettingsMenuItem {
   constructor(menuItem) {
-    extend(
-      this,
-      { pathPrefix: `/${menuItem.path}` },
-      omit(menuItem, ['isActive']),
-    );
+    extend(this, { pathPrefix: `/${menuItem.path}` }, omit(menuItem, ["isActive"]));
     if (isFunction(menuItem.isActive)) {
       this.isActive = menuItem.isActive;
     }
@@ -14,6 +12,10 @@ class SettingsMenuItem {
 
   isActive(path) {
     return path.startsWith(this.pathPrefix);
+  }
+
+  isAvailable() {
+    return this.permission === undefined || currentUser.hasPermission(this.permission);
   }
 }
 
@@ -24,11 +26,16 @@ class SettingsMenu {
 
   add(item) {
     this.items.push(new SettingsMenuItem(item));
-    this.items = sortBy(this.items, 'order');
+    this.items = sortBy(this.items, "order");
+  }
+
+  getAvailableItems() {
+    return filter(this.items, item => item.isAvailable());
   }
 
   getActiveItem(path) {
-    return find(this.items, item => item.isActive(path));
+    const strippedPath = stripBase(path);
+    return find(this.items, item => item.isActive(strippedPath));
   }
 }
 
