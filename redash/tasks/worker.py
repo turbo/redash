@@ -3,7 +3,8 @@ import os
 import signal
 import time
 from redash import statsd_client
-from rq import Worker as BaseWorker, Queue as BaseQueue, get_current_job
+from rq import Queue as BaseQueue, get_current_job
+from rq.worker import HerokuWorker # HerokuWorker implements graceful shutdown on SIGTERM
 from rq.utils import utcnow
 from rq.timeouts import UnixSignalDeathPenalty, HorseMonitorTimeoutException
 from rq.job import Job as BaseJob, JobStatus
@@ -11,10 +12,8 @@ from rq.job import Job as BaseJob, JobStatus
 
 class CancellableJob(BaseJob):
     def cancel(self, pipeline=None):
-        # TODO - add tests that verify that queued jobs are removed from queue and running jobs are actively cancelled
-        if self.is_started:
-            self.meta["cancelled"] = True
-            self.save_meta()
+        self.meta["cancelled"] = True
+        self.save_meta()
 
         super().cancel(pipeline=pipeline)
 
@@ -42,7 +41,7 @@ class RedashQueue(StatsdRecordingQueue, CancellableQueue):
     pass
 
 
-class StatsdRecordingWorker(BaseWorker):
+class StatsdRecordingWorker(HerokuWorker):
     """
     RQ Worker Mixin that overrides `execute_job` to increment/modify metrics via Statsd
     """
@@ -60,7 +59,7 @@ class StatsdRecordingWorker(BaseWorker):
                 statsd_client.incr("rq.jobs.failed.{}".format(queue.name))
 
 
-class HardLimitingWorker(BaseWorker):
+class HardLimitingWorker(HerokuWorker):
     """
     RQ's work horses enforce time limits by setting a timed alarm and stopping jobs
     when they reach their time limits. However, the work horse may be entirely blocked
@@ -76,7 +75,7 @@ class HardLimitingWorker(BaseWorker):
     """
 
     grace_period = 15
-    queue_class = CancellableQueue
+    queue_class = RedashQueue
     job_class = CancellableJob
 
     def stop_executing_job(self, job):
@@ -102,12 +101,13 @@ class HardLimitingWorker(BaseWorker):
         )
         self.kill_horse()
 
-    def monitor_work_horse(self, job):
+    def monitor_work_horse(self, job, queue):
         """The worker will monitor the work horse and make sure that it
         either executes successfully or the status of the job is set to
         failed
         """
         self.monitor_started = utcnow()
+        job.started_at = utcnow()
         while True:
             try:
                 with UnixSignalDeathPenalty(
@@ -159,6 +159,7 @@ class HardLimitingWorker(BaseWorker):
 
             self.handle_job_failure(
                 job,
+                queue=queue,
                 exc_string="Work-horse process was terminated unexpectedly "
                 "(waitpid returned %s)" % ret_val,
             )

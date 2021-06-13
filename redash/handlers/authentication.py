@@ -148,6 +148,7 @@ def verify(token, org_slug=None):
 
 
 @routes.route(org_scoped_rule("/forgot"), methods=["GET", "POST"])
+@limiter.limit(settings.THROTTLE_PASS_RESET_PATTERN)
 def forgot_password(org_slug=None):
     if not current_org.get_setting("auth_password_login_enabled"):
         abort(404)
@@ -288,6 +289,7 @@ def client_config():
         "hidePlotlyModeBar": current_org.get_setting(
             "hide_plotly_mode_bar"
         ),
+        "disablePublicUrls": current_org.get_setting("disable_public_urls"),
         "allowCustomJSVisualizations": settings.FEATURE_ALLOW_CUSTOM_JS_VISUALIZATIONS,
         "autoPublishNamedQueries": settings.FEATURE_AUTO_PUBLISH_NAMED_QUERIES,
         "extendedAlertOptions": settings.FEATURE_EXTENDED_ALERT_OPTIONS,

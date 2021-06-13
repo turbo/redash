@@ -2,9 +2,10 @@ import hashlib
 import hmac
 import logging
 import time
+from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 
-from flask import jsonify, redirect, request, url_for
+from flask import jsonify, redirect, request, url_for, session
 from flask_login import LoginManager, login_user, logout_user, user_logged_in
 from redash import models, settings
 from redash.authentication import jwt_auth
@@ -250,11 +251,18 @@ def init_app(app):
 
     login_manager.init_app(app)
     login_manager.anonymous_user = models.AnonymousUser
+    login_manager.REMEMBER_COOKIE_DURATION = settings.REMEMBER_COOKIE_DURATION
 
-    app.register_blueprint(google_oauth.blueprint)
-    app.register_blueprint(saml_auth.blueprint)
-    app.register_blueprint(remote_user_auth.blueprint)
-    app.register_blueprint(ldap_auth.blueprint)
+    @app.before_request
+    def extend_session():
+        session.permanent = True
+        app.permanent_session_lifetime = timedelta(seconds=settings.SESSION_EXPIRY_TIME)
+
+    from redash.security import csrf
+    for auth in [google_oauth, saml_auth, remote_user_auth, ldap_auth]:
+        blueprint = auth.blueprint
+        csrf.exempt(blueprint)
+        app.register_blueprint(blueprint)
 
     user_logged_in.connect(log_user_logged_in)
     login_manager.request_loader(request_loader)

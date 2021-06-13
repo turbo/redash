@@ -10,6 +10,7 @@ from redash.models.parameterized_query import (
 from redash.tasks.failure_report import track_failure
 from redash.utils import json_dumps, sentry
 from redash.worker import job, get_job_logger
+from redash.monitor import rq_job_ids
 
 from .execution import enqueue_query
 
@@ -75,6 +76,13 @@ class RefreshQueriesError(Exception):
     pass
 
 
+def _apply_auto_limit(query_text, query):
+    should_apply_auto_limit = query.options.get("apply_auto_limit", False)
+    return query.data_source.query_runner.apply_auto_limit(
+        query_text, should_apply_auto_limit
+    )
+
+
 def refresh_queries():
     logger.info("Refreshing queries...")
     enqueued = []
@@ -83,12 +91,14 @@ def refresh_queries():
             continue
 
         try:
+            query_text = _apply_default_parameters(query)
+            query_text = _apply_auto_limit(query_text, query)
             enqueue_query(
-                _apply_default_parameters(query),
+                query_text,
                 query.data_source,
                 query.user_id,
                 scheduled_query=query,
-                metadata={"Query ID": query.id, "Username": "Scheduled"},
+                metadata={"query_id": query.id, "Username": "Scheduled"},
             )
             enqueued.append(query)
         except Exception as e:
@@ -110,7 +120,7 @@ def refresh_queries():
 def cleanup_query_results():
     """
     Job to cleanup unused query results -- such that no query links to them anymore, and older than
-    settings.QUERY_RESULTS_MAX_AGE (a week by default, so it's less likely to be open in someone's browser and be used).
+    settings.QUERY_RESULTS_CLEANUP_MAX_AGE (a week by default, so it's less likely to be open in someone's browser and be used).
 
     Each time the job deletes only settings.QUERY_RESULTS_CLEANUP_COUNT (100 by default) query results so it won't choke
     the database in case of many such results.
@@ -132,6 +142,24 @@ def cleanup_query_results():
     ).delete(synchronize_session=False)
     models.db.session.commit()
     logger.info("Deleted %d unused query results.", deleted_count)
+
+
+def remove_ghost_locks():
+    """
+    Removes query locks that reference a non existing RQ job.
+    """
+    keys = redis_connection.keys("query_hash_job:*")
+    locks = {k: redis_connection.get(k) for k in keys}
+    jobs = list(rq_job_ids())
+
+    count = 0
+
+    for lock, job_id in locks.items():
+        if job_id not in jobs:
+            redis_connection.delete(lock)
+            count += 1
+
+    logger.info("Locks found: {}, Locks removed: {}".format(len(locks), count))
 
 
 @job("schemas")

@@ -20,7 +20,6 @@ from redash.tasks import Job
 from redash.tasks.queries import enqueue_query
 from redash.utils import (
     collect_parameters_from_request,
-    gen_query_hash,
     json_dumps,
     utcnow,
     to_filename,
@@ -61,7 +60,9 @@ error_messages = {
 }
 
 
-def run_query(query, parameters, data_source, query_id, max_age=0):
+def run_query(
+    query, parameters, data_source, query_id, should_apply_auto_limit, max_age=0
+):
     if data_source.paused:
         if data_source.pause_reason:
             message = "{} is paused ({}). Please try later.".format(
@@ -77,6 +78,10 @@ def run_query(query, parameters, data_source, query_id, max_age=0):
     except (InvalidParameterError, QueryDetachedFromDataSourceError) as e:
         abort(400, message=str(e))
 
+    query_text = data_source.query_runner.apply_auto_limit(
+        query.text, should_apply_auto_limit
+    )
+
     if query.missing_params:
         return error_response(
             "Missing parameter value for: {}".format(", ".join(query.missing_params))
@@ -85,7 +90,7 @@ def run_query(query, parameters, data_source, query_id, max_age=0):
     if max_age == 0:
         query_result = None
     else:
-        query_result = models.QueryResult.get_latest(data_source, query.text, max_age)
+        query_result = models.QueryResult.get_latest(data_source, query_text, max_age)
 
     record_event(
         current_user.org,
@@ -95,7 +100,7 @@ def run_query(query, parameters, data_source, query_id, max_age=0):
             "cache": "hit" if query_result else "miss",
             "object_id": data_source.id,
             "object_type": "data_source",
-            "query": query.text,
+            "query": query_text,
             "query_id": query_id,
             "parameters": parameters,
         },
@@ -109,7 +114,7 @@ def run_query(query, parameters, data_source, query_id, max_age=0):
         }
     else:
         job = enqueue_query(
-            query.text,
+            query_text,
             data_source,
             current_user.id,
             current_user.is_api_user(),
@@ -117,7 +122,7 @@ def run_query(query, parameters, data_source, query_id, max_age=0):
                 "Username": repr(current_user)
                 if current_user.is_api_user()
                 else current_user.email,
-                "Query ID": query_id,
+                "query_id": query_id,
             },
         )
         return serialize_job(job)
@@ -180,6 +185,7 @@ class QueryResultListResource(BaseResource):
         )
 
         parameterized_query = ParameterizedQuery(query, org=self.current_org)
+        should_apply_auto_limit = params.get("apply_auto_limit", False)
 
         data_source_id = params.get("data_source_id")
         if data_source_id:
@@ -193,7 +199,12 @@ class QueryResultListResource(BaseResource):
             return error_messages["no_permission"]
 
         return run_query(
-            parameterized_query, parameters, data_source, query_id, max_age
+            parameterized_query,
+            parameters,
+            data_source,
+            query_id,
+            should_apply_auto_limit,
+            max_age,
         )
 
 
@@ -286,6 +297,7 @@ class QueryResultResource(BaseResource):
         )
 
         allow_executing_with_view_only_permissions = query.parameterized.is_safe
+        should_apply_auto_limit = params.get("apply_auto_limit", False)
 
         if has_access(
             query, self.current_user, allow_executing_with_view_only_permissions
@@ -295,6 +307,7 @@ class QueryResultResource(BaseResource):
                 parameter_values,
                 query.data_source,
                 query_id,
+                should_apply_auto_limit,
                 max_age,
             )
         else:
@@ -388,10 +401,10 @@ class QueryResultResource(BaseResource):
                 self.record_event(event)
 
             response_builders = {
-                'json': self.make_json_response,
-                'xlsx': self.make_excel_response,
-                'csv': self.make_csv_response,
-                'tsv': self.make_tsv_response
+                "json": self.make_json_response,
+                "xlsx": self.make_excel_response,
+                "csv": self.make_csv_response,
+                "tsv": self.make_tsv_response,
             }
             response = response_builders[filetype](query_result)
 
@@ -422,12 +435,16 @@ class QueryResultResource(BaseResource):
     @staticmethod
     def make_csv_response(query_result):
         headers = {"Content-Type": "text/csv; charset=UTF-8"}
-        return make_response(serialize_query_result_to_dsv(query_result, ","), 200, headers)
+        return make_response(
+            serialize_query_result_to_dsv(query_result, ","), 200, headers
+        )
 
     @staticmethod
     def make_tsv_response(query_result):
         headers = {"Content-Type": "text/tab-separated-values; charset=UTF-8"}
-        return make_response(serialize_query_result_to_dsv(query_result, "\t"), 200, headers)
+        return make_response(
+            serialize_query_result_to_dsv(query_result, "\t"), 200, headers
+        )
 
     @staticmethod
     def make_excel_response(query_result):

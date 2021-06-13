@@ -11,6 +11,7 @@ from .helpers import (
     int_or_none,
     set_from_string,
     add_decode_responses_to_redis_url,
+    cast_int_or_default
 )
 from .organization import DATE_FORMAT, TIME_FORMAT  # noqa
 
@@ -92,6 +93,8 @@ SESSION_COOKIE_SECURE = parse_boolean(
 SESSION_COOKIE_HTTPONLY = parse_boolean(
     os.environ.get("REDASH_SESSION_COOKIE_HTTPONLY", "true")
 )
+SESSION_EXPIRY_TIME = int(os.environ.get("REDASH_SESSION_EXPIRY_TIME", 60 * 60 * 6))
+
 # Whether the session cookie is set to secure.
 REMEMBER_COOKIE_SECURE = parse_boolean(
     os.environ.get("REDASH_REMEMBER_COOKIE_SECURE") or str(COOKIES_SECURE)
@@ -99,6 +102,10 @@ REMEMBER_COOKIE_SECURE = parse_boolean(
 # Whether the remember cookie is set HttpOnly.
 REMEMBER_COOKIE_HTTPONLY = parse_boolean(
     os.environ.get("REDASH_REMEMBER_COOKIE_HTTPONLY", "true")
+)
+# The amount of time before the remember cookie expires.
+REMEMBER_COOKIE_DURATION = int(
+    os.environ.get("REDASH_REMEMBER_COOKIE_DURATION", 60 * 60 * 24 * 31)
 )
 
 # Doesn't set X-Frame-Options by default since it's highly dependent
@@ -167,6 +174,10 @@ GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 # This setting will force the URL scheme.
 SAML_SCHEME_OVERRIDE = os.environ.get("REDASH_SAML_SCHEME_OVERRIDE", "")
 
+SAML_ENCRYPTION_PEM_PATH = os.environ.get("REDASH_SAML_ENCRYPTION_PEM_PATH", "")
+SAML_ENCRYPTION_CERT_PATH = os.environ.get("REDASH_SAML_ENCRYPTION_CERT_PATH", "")
+SAML_ENCRYPTION_ENABLED = SAML_ENCRYPTION_PEM_PATH != "" and SAML_ENCRYPTION_CERT_PATH != ""
+
 # Enables the use of an externally-provided and trusted remote user via an HTTP
 # header.  The "user" must be an email address.
 #
@@ -229,7 +240,9 @@ LDAP_SEARCH_DN = os.environ.get(
 STATIC_ASSETS_PATH = fix_assets_path(
     os.environ.get("REDASH_STATIC_ASSETS_PATH", "../client/dist/")
 )
-
+FLASK_TEMPLATE_PATH = fix_assets_path(
+    os.environ.get("REDASH_FLASK_TEMPLATE_PATH", STATIC_ASSETS_PATH)
+)
 # Time limit (in seconds) for scheduled queries. Set this to -1 to execute without a time limit.
 SCHEDULED_QUERY_TIME_LIMIT = int(
     os.environ.get("REDASH_SCHEDULED_QUERY_TIME_LIMIT", -1)
@@ -297,8 +310,9 @@ ALERTS_DEFAULT_MAIL_SUBJECT_TEMPLATE = os.environ.get(
 RATELIMIT_ENABLED = parse_boolean(os.environ.get("REDASH_RATELIMIT_ENABLED", "true"))
 THROTTLE_LOGIN_PATTERN = os.environ.get("REDASH_THROTTLE_LOGIN_PATTERN", "50/hour")
 LIMITER_STORAGE = os.environ.get("REDASH_LIMITER_STORAGE", REDIS_URL)
+THROTTLE_PASS_RESET_PATTERN = os.environ.get("REDASH_THROTTLE_PASS_RESET_PATTERN", "10/hour")
 
-# CORS settings for the Query Result API (and possbily future external APIs).
+# CORS settings for the Query Result API (and possibly future external APIs).
 # In most cases all you need to do is set REDASH_CORS_ACCESS_CONTROL_ALLOW_ORIGIN
 # to the calling domain (or domains in a comma separated list).
 ACCESS_CONTROL_ALLOW_ORIGIN = set_from_string(
@@ -328,6 +342,7 @@ default_query_runners = [
     "redash.query_runner.influx_db",
     "redash.query_runner.elasticsearch",
     "redash.query_runner.amazon_elasticsearch",
+    "redash.query_runner.trino",
     "redash.query_runner.presto",
     "redash.query_runner.databricks",
     "redash.query_runner.hive_ds",
@@ -364,6 +379,8 @@ default_query_runners = [
     "redash.query_runner.exasol",
     "redash.query_runner.cloudwatch",
     "redash.query_runner.cloudwatch_insights",
+    "redash.query_runner.corporate_memory",
+    "redash.query_runner.sparql_endpoint"
 ]
 
 enabled_query_runners = array_from_string(
@@ -498,3 +515,16 @@ SQLPARSE_FORMAT_OPTIONS = {
 REQUESTS_ALLOW_REDIRECTS = parse_boolean(
     os.environ.get("REDASH_REQUESTS_ALLOW_REDIRECTS", "false")
 )
+
+# Enforces CSRF token validation on API requests.
+# This is turned off by default to avoid breaking any existing deployments but it is highly recommended to turn this toggle on to prevent CSRF attacks.
+ENFORCE_CSRF = parse_boolean(
+    os.environ.get("REDASH_ENFORCE_CSRF", "false")
+)
+
+# Databricks
+
+CSRF_TIME_LIMIT = int(os.environ.get("REDASH_CSRF_TIME_LIMIT", 3600 * 6))
+
+# Email blocked domains, use delimiter comma to separated multiple domains
+BLOCKED_DOMAINS = set_from_string(os.environ.get("REDASH_BLOCKED_DOMAINS", "qq.com"))
